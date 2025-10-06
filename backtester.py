@@ -42,7 +42,7 @@ def backtest_dual_momentum_portfolio(prices, combined_scores, reversal_scores):
         strength1, strength2 = max(0, -reversal_score1), max(0, -reversal_score2)
         total_strength = strength1 + strength2
 
-        weight1, weight2 = (strength1 / total_strength, strength2 / total_strength) if total_strength > 0 else (0.5,
+        weight1, weight2 = (strength2 / total_strength, strength1 / total_strength) if total_strength > 0 else (0.5,
                                                                                                                 0.5)
 
         return1, return2 = daily_returns.at[date, etf1], daily_returns.at[date, etf2]

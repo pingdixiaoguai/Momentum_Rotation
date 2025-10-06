@@ -51,13 +51,13 @@ def generate_and_send_live_signal():
     send_to_dingtalk(config.DINGTALK_WEBHOOK_URL, config.DINGTALK_SECRET, title, markdown_message)
 
 
-def run_backtest():
+def run_backtest(force_refresh):
     """
     运行完整的回测。
     """
     print("开始执行历史回测...")
     all_symbols = list(set(config.ETF_SYMBOLS_UPDATED + [config.BENCHMARK_SYMBOL]))
-    closes, opens = get_etf_data(all_symbols, config.CACHE_FILE, force_refresh=False)
+    closes, opens = get_etf_data(all_symbols, config.CACHE_FILE, force_refresh)
     if closes is None:
         print("获取数据失败，回测终止。")
         return
@@ -67,7 +67,7 @@ def run_backtest():
 # --- 主程序入口 ---
 if __name__ == '__main__':
     # --- 选项1：运行完整的回测对比 ---
-    # run_backtest()
+    run_backtest(force_refresh=False)
 
     # --- 选项2：生成并发送明日的交易信号 ---
-    generate_and_send_live_signal()
+    # generate_and_send_live_signal()
