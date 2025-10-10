@@ -63,7 +63,7 @@ class Backtester:
         qs.reports.html(
             returns=strategy_returns,
             benchmark=benchmark_returns,
-            output=strategy_func.__name__ + OUTPUT_HTML_FILE,
+            output=strategy_func.__name__ + "_" + OUTPUT_HTML_FILE,
             title=f'策略回测报告 ({strategy_func.__name__})'
         )
-        print(f"报告已生成: {OUTPUT_HTML_FILE}")
+        print(f"报告已生成: {strategy_func.__name__ + "_" + OUTPUT_HTML_FILE}")
