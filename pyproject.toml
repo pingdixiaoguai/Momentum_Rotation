@@ -1,0 +1,16 @@
+[project]
+name = "momentum-rotation"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "akshare==1.17.63",
+    "ipython>=9.6.0",
+    "pandas==2.3.3",
+    "quantstats==0.0.77",
+    "requests==2.32.5",
+]
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
