@@ -1,4 +1,0 @@
-akshare==1.17.63
-pandas==2.3.3
-quantstats==0.0.77
-Requests==2.32.5
