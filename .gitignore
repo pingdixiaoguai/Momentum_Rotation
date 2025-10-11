@@ -4,3 +4,8 @@
 .venv
 .env
 .html
+uv.lock
+*.pyc
+./data/**
+./pytest_cache/**
+**.log
