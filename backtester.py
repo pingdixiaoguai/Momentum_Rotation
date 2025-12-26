@@ -23,7 +23,7 @@ class Backtester:
         volumes = volumes.loc[self.start_date:self.end_date]
 
         # 1. 调用策略函数生成信号
-        holdings = strategy_func(closes)
+        holdings = strategy_func(closes, volumes)
         signals = holdings.shift(1).dropna()
         # print("opens:", opens)
         # print("holdings:", holdings)
@@ -66,16 +66,16 @@ class Backtester:
         print("\n回测完成，正在生成报告...")
         benchmark_returns = closes[BENCHMARK_SYMBOL].pct_change().loc[strategy_returns.index]
 
-        print("portfolio_value:", portfolio_value)
+        # print("[backtester] portfolio_value:", portfolio_value)
         tmp = portfolio_value / portfolio_value.shift(1)
         tmp = tmp.dropna()
-        print("tmp info:",type(tmp),tmp,max(tmp),tmp.idxmax())
-        print("portfolio_value find:",portfolio_value.loc['2024-09-20':'2024-10-10'])
-        print("holdings find:",holdings.loc['2024-09-20':'2024-10-10'])
+        # print("[backtester] tmp info:",type(tmp),tmp,max(tmp),tmp.idxmax())
+        # print("[backtester] portfolio_value find:",portfolio_value.loc['2024-09-20':'2024-10-10'])
+        # print("[backtester] holdings find:",holdings.loc['2024-09-20':'2024-10-10'])
 
 
-        print("strategy_returns:",strategy_returns)
-        print("benchmark_returns:",benchmark_returns)
+        # print("[backtester] strategy_returns:",strategy_returns)
+        # print("[backtester] benchmark_returns:",benchmark_returns)
 
         qs.reports.html(
             returns=strategy_returns,
