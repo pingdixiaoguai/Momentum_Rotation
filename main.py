@@ -23,14 +23,14 @@ if __name__ == '__main__':
 
     if MODE == 'backtest':
         print("--- 模式一：执行历史回测 ---")
-        closes, opens = get_etf_data(config.ETF_SYMBOLS, config.CACHE_FILE, force_refresh=False)
+        closes, opens, volumes = get_etf_data(config.ETF_SYMBOLS, config.CACHE_FILE, force_refresh=False)
         if closes is not None:
             # 1. 初始化回测引擎
             bt = Backtester()
 
             # 2. 选择一个策略函数并运行回测
             # !!! 您可以在这里轻松切换不同的策略进行回测 !!!
-            bt.run(closes, opens, strategy_func=risk_managed_momentum_strategy)
+            bt.run(closes, opens, volumes, strategy_func=risk_managed_momentum_strategy)
             # bt.run(closes, opens, strategy_func=pure_momentum_strategy)
 
     elif MODE == 'signal':

@@ -12,14 +12,19 @@ def get_etf_data(symbols, cache_file, force_refresh=False):
     """
     cache_file_closes = cache_file.replace('.csv', '_closes.csv')
     cache_file_opens = cache_file.replace('.csv', '_opens.csv')
+    cache_file_volumes = cache_file.replace('.csv', '_volumes.csv')
 
     if os.path.exists(cache_file_closes) and not force_refresh:
         print(f"从缓存文件加载数据...")
         closes = pd.read_csv(cache_file_closes, parse_dates=['date'], index_col='date')
         opens = pd.read_csv(cache_file_opens, parse_dates=['date'], index_col='date')
+        volumes = pd.read_csv(cache_file_opens, parse_dates=['date'], index_col='date')
+
         closes.columns = closes.columns.astype(str)
         opens.columns = opens.columns.astype(str)
-        return closes, opens
+        volumes.columns = volumes.columns.astype(str)
+
+        return closes, opens, volumes
 
     print("开始从网络下载ETF历史数据...")
     all_data = {}
@@ -31,8 +36,8 @@ def get_etf_data(symbols, cache_file, force_refresh=False):
                 print(f"正在获取 {symbol}... (等待 {delay:.2f} 秒)")
                 time.sleep(delay)
                 str_symbol = str(symbol)
-                etf_df = ak.fund_etf_hist_em(symbol=str_symbol, period="daily", adjust="hfq")[["日期", "开盘", "收盘"]]
-                etf_df.rename(columns={"日期": "date", "开盘": "open", "收盘": "close"}, inplace=True)
+                etf_df = ak.fund_etf_hist_em(symbol=str_symbol, period="daily", start_date="20130101", adjust="hfq")[["日期", "开盘", "收盘", "成交量"]]
+                etf_df.rename(columns={"日期": "date", "开盘": "open", "收盘": "close", "成交量": "volume"}, inplace=True)
                 etf_df.set_index("date", inplace=True)
                 all_data[str_symbol] = etf_df
                 print(f"成功获取 {symbol} 的数据。")
@@ -48,8 +53,9 @@ def get_etf_data(symbols, cache_file, force_refresh=False):
 
     closes = pd.DataFrame({symbol: df['close'] for symbol, df in all_data.items()})
     opens = pd.DataFrame({symbol: df['open'] for symbol, df in all_data.items()})
+    volumes = pd.DataFrame({symbol: df['volume'] for symbol, df in all_data.items()})
 
-    for df in [closes, opens]:
+    for df in [closes, opens, volumes]:
         df.index = pd.to_datetime(df.index)
         df.sort_index(inplace=True)
         df.fillna(method='ffill', inplace=True)
@@ -58,4 +64,11 @@ def get_etf_data(symbols, cache_file, force_refresh=False):
     print(f"\n数据下载完成，保存到缓存文件...")
     closes.to_csv(cache_file_closes)
     opens.to_csv(cache_file_opens)
-    return closes, opens
+    volumes.to_csv(cache_file_volumes)
+    return closes, opens, volumes
+
+
+# import config
+# closes, opens = get_etf_data(config.ETF_SYMBOLS, config.CACHE_FILE, force_refresh=False)
+# print(closes)
+# print(opens)
