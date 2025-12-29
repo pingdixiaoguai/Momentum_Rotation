@@ -40,8 +40,12 @@ def risk_managed_momentum_strategy(closes: pd.DataFrame,
     # 原代码权重: Mom=1, Rev=5。这里因为用了Rank，量纲一致，我们调整为 1:1 或 1:0.5 试试
     combined_score = 1.0 * mom_rank - 0.5 * rev_rank
 
+    # --- 修复警告的关键步骤 ---
+    # 去除由于 Rolling Window 导致的初始空值行
+    # how='all' 表示只有当这一行的所有ETF都是NaN时才删除
+    combined_score = combined_score.dropna(how='all')
+
     # 4. 生成持仓信号
-    # 找到每天得分最高的 ETF
     best_asset = combined_score.idxmax(axis=1)
 
     # 5. 现金过滤器 (择时)
