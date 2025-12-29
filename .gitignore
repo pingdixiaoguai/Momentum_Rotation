@@ -3,10 +3,11 @@
 .vscode/**
 .venv
 .env
-.html
+*.html
 uv.lock
 *.pyc
 ./data/**
 ./pytest_cache/**
 **.log
 *.csv
+*.png
