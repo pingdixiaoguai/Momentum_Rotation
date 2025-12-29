@@ -9,3 +9,4 @@ uv.lock
 ./data/**
 ./pytest_cache/**
 **.log
+*.csv
