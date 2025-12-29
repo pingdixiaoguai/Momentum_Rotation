@@ -14,11 +14,11 @@ def generate_and_send(strategy_func):
     print(f"\n--- 使用策略 '{strategy_func.__name__}' 为下一个交易日生成信号 ---")
 
     # 1. 获取最新数据
-    closes, _ = get_etf_data(config.ETF_SYMBOLS, config.CACHE_FILE, force_refresh=True)
+    closes, _, volumes = get_etf_data(config.ETF_SYMBOLS, config.CACHE_FILE, force_refresh=True)
     if closes is None: return
 
     # 2. 调用策略函数获取信号
-    all_signals = strategy_func(closes)
+    all_signals = strategy_func(closes, volumes)
     if all_signals.empty: return
 
     # 3. 提取最新信号

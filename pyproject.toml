@@ -12,10 +12,11 @@ dependencies = [
     "pyarrow>=21.0.0",
     "dotenv>=0.9.9",
     "cachetools==5.5.0",
+    "notebook>=7.4.7",
 ]
 
 [[tool.uv.index]]
-url = "https://mirrors.aliyun.com/pypi/simple"
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
 
 [dependency-groups]
