@@ -17,7 +17,7 @@ from strategies.risk_managed_momentum_strategy import risk_managed_momentum_stra
 from strategies.pure_momentum_strategy import pure_momentum_strategy
 
 # --- 在这里选择要执行的模式 ---
-MODE = "signal"  # 'backtest' 或 'signal'
+MODE = "backtest"  # 'backtest' 或 'signal'
 
 if __name__ == '__main__':
 

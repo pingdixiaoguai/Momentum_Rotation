@@ -23,7 +23,7 @@ class Backtester:
         volumes = volumes.loc[self.start_date:self.end_date]
 
         # 1. 调用策略函数生成信号
-        holdings = strategy_func(closes, volumes)
+        holdings = strategy_func(closes)
         signals = holdings.shift(1).dropna()
         # print("opens:", opens)
         # print("holdings:", holdings)
