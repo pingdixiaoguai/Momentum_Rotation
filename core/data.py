@@ -61,7 +61,7 @@ class DataLoader:
             try:
                 # Pivot: Index=Date, Columns=Code, Values=Col
                 wide_df = all_data.pivot(index=DATETIME, columns=CODE, values=col)
-                wide_df = wide_df.sort_index().fillna(method='ffill')
+                wide_df = wide_df.sort_index().ffill()
 
                 # 将列名统一转为小写 (e.g. 'CLOSE' -> 'close')
                 data_dict[col.lower()] = wide_df

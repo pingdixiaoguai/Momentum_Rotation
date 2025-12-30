@@ -7,7 +7,6 @@ from core.strategies import FactorRotationStrategy
 from utils import logger  # 导入 logger
 
 # --- 模块化导入因子 ---
-# 得益于 factors/__init__.py，我们可以直接从 factors 包导入
 from factors import Momentum, Volatility, IntradayVolatility, MeanReversion
 
 
@@ -20,7 +19,6 @@ class SimpleEngine:
         opens = data_dict.get('open', data_dict['close'])
 
         # 2. 获取目标权重 (核心逻辑)
-        # 策略内部会调用各个因子的 calculate(**data_dict)
         target_weights = strategy.generate_target_weights(**data_dict)
 
         # Shift 1: 今天的信号 -> 明天的持仓
@@ -40,48 +38,60 @@ class SimpleEngine:
 
 def main():
     # 1. 加载数据
-    loader = DataLoader("2013-01-01", "2025-12-30", auto_sync=True)
-    # data_dict 包含 'close', 'open', 'high', 'low' 等所有可用字段
-    data_dict = loader.load(config.ETF_SYMBOLS)
+    # 注意：这里会根据 auto_sync=True 自动拉取数据
+    loader = DataLoader("2013-01-01", "2025-12-30", auto_sync=False)
 
-    # 2. 组装策略
+    # 你的ETF池子
+    symbols = config.ETF_SYMBOLS
+
+    data_dict = loader.load(symbols)
+
+    # --- 准备基准收益 (用于报告对比) ---
+    # 修改：直接使用当前资产池所有标的的平均收益作为基准 (等权基准)
+    logger.info("Using average return of all assets as benchmark.")
+    # axis=1 表示按行求平均，即每一天所有资产收益率的平均值
+    benchmark_rets = data_dict['close'].pct_change().mean(axis=1).fillna(0)
+    # 显式给 Series 命名，防止 quantstats 内部获取 name 时出错
+    benchmark_rets.name = "Equal_Weighted_Benchmark"
+
+    # 2. 组装策略 (批量回测配置)
+    # 这里定义了一个列表，包含多个不同配置的策略实例。
+    # 程序会依次运行它们，这样您可以方便地对比不同参数或因子组合的效果。
     strategies = [
-        # 策略A: 纯动量
+        # 第 1 个策略：仅使用 20 日动量
         FactorRotationStrategy(
             factors=[(Momentum(20), 1.0)],
             top_k=1,
             timing_period=0
-        ),
-
-        # 策略B: 动量 + 低波动 (混合因子)
-        FactorRotationStrategy(
-            factors=[
-                (Momentum(20), 1.0),  # 追涨
-                (IntradayVolatility(10), -0.5),  # 杀跌 (避开波动剧烈的)
-                (MeanReversion(5), -0.3)  # 避开短期涨过头的
-            ],
-            top_k=1,
-            timing_period=60  # 均线择时
         )
     ]
 
-    # 3. 执行回测
+    # 3. 执行回测并生成报告
     engine = SimpleEngine()
-    plt.figure(figsize=(12, 6))
 
     for strat in strategies:
         try:
             rets = engine.run(strat, **data_dict)
-            sharpe = qs.stats.sharpe(rets)
-            (1 + rets).cumprod().plot(label=f"{strat.name} (Sharpe={sharpe:.2f})")
-        except Exception as e:
-            logger.error(f"Strategy {strat.name} failed: {e}")
+            rets.index = pd.to_datetime(rets.index)  # 确保索引是 datetime 类型
 
-    plt.title("Factor Rotation: Modular Architecture Test")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig("backtest_result.png")
-    logger.info("Backtest finished. Check backtest_result.png")
+            # --- 生成 HTML 报告的核心代码 ---
+            report_filename = f"report_{strat.name}.html"
+            logger.info(f"Generating full HTML report for {strat.name}...")
+
+            # 必须对齐时间索引，否则 quantstats 可能会报错
+            common_idx = rets.index.intersection(benchmark_rets.index)
+
+            qs.reports.html(
+                rets.loc[common_idx],
+                benchmark=benchmark_rets.loc[common_idx],
+                output=report_filename,
+                title=f"{strat.name} Performance Report"
+            )
+            logger.info(f"Report successfully saved to: {report_filename}")
+            # --------------------------------
+
+        except Exception as e:
+            logger.error(f"Strategy {strat.name} failed: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
