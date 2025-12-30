@@ -1,112 +1,100 @@
-# **动量轮动策略框架 (Momentum Rotation Strategy Framework)**
+动量轮动策略框架 (Momentum Rotation Framework)
+这是一个基于 Python 的现代化量化回测与实盘信号框架，经过重构后采用了因子化架构 (Factor-Based Architecture)。
+本项目旨在解决传统量化代码中“策略逻辑”与“执行逻辑”耦合过重的问题。通过将因子计算与持仓管理完全分离，你现在可以像搭积木一样，通过组合不同的因子（如动量、波动率、RSI）来快速构建复杂的轮动策略。
+✨ 核心特性
+因子化架构: 核心逻辑解耦。编写策略只需关注“因子公式”，持仓权重由通用引擎自动计算。
+极简扩展: 在 factors/library.py 中几行代码即可定义新因子，支持任意数据字段输入（如 open, high, turnover）。
+高性能数据层: 基于 Parquet 的增量数据仓库 (infra 模块)，支持 DataLoader 自动同步与清洗，以宽表字典 (Dict[str, DataFrame]) 形式高效传输数据。
+向量化引擎: 摒弃低效的 for 循环，采用全向量化计算，极速完成多年回测。
+生产级功能: 集成钉钉群机器人通知、HTML 专业研报生成 (quantstats)。
+📂 项目结构
+重构后的目录结构清晰明了，消除了旧版本的冗余代码：
+Momentum_Rotation/
+├── core/                   # [核心架构] 系统的骨架
+│   ├── base.py             # 定义 Factor 和 Strategy 抽象基类
+│   ├── data.py             # 统一数据加载器 (封装了 infra)
+│   └── strategies.py       # 通用轮动策略逻辑 (排序、加权、择时)
+├── factors/                # [因子库] 你的军火库
+│   └── library.py          # 在这里编写 Momentum, Volatility 等因子
+├── infra/                  # [数据底层] 负责 Parquet 读写与 Akshare 同步
+├── utils/                  # [工具] 通用函数
+├── run.py                  # [入口] 唯一的上帝入口 (回测/实盘)
+├── config.py               # [配置] 全局参数
+├── notifier.py             # [通知] 钉钉消息发送
+├── .env                    # [私密] 存放 Token 和 Secret
+└── pyproject.toml          # [依赖] 项目依赖管理
 
-这是一个基于 Python 的量化回测与研究框架，专注于**动量轮动 (Momentum Rotation)** 类策略的开发、测试与实盘信号生成。
 
-本项目已从早期的脚本化代码重构为模块化的工程架构，支持**基于 Parquet 的增量数据存储**、**面向对象的策略开发**以及**批量参数扫描**。
+🚀 快速开始
+1. 环境准备
+本项目推荐使用 uv 进行依赖管理（比 pip 快得多）。
+# 初始化环境并同步依赖
+uv sync
 
-## **核心特性**
 
-* **工程化架构**: 采用清晰的分层设计（数据层、策略层、引擎层），解耦业务逻辑与底层实现。  
-* **专业数据系统**: 废弃了低效的 CSV 全量读写，集成 infra 模块，使用 **Parquet** 进行高效、增量的时间序列存储。  
-* **灵活的策略接口**: 策略以类（Class）的形式存在，支持参数化配置（如 window=20 vs window=30），方便进行 Grid Search。  
-* **批量回测研究**: 提供独立的 run\_research.py 入口，支持一次性运行多个策略配置并生成对比报表。  
-* **可扩展性**: 核心逻辑抽象为 DataProvider 和 Strategy 接口，方便未来接入数据库或新增策略类型。
+或者使用传统的 pip：
+pip install -r requirements.txt
+# (注: 如果没有 requirements.txt，请根据 pyproject.toml 安装)
 
-## **项目结构**
 
-Momentum\_Rotation/  
-├── core.py             \# \[核心\] 定义抽象基类 (DataProvider, Strategy, BacktestEngine)  
-├── data.py             \# \[数据\] Parquet 数据适配层，负责连接 infra 与策略层  
-├── engine.py           \# \[引擎\] 回测计算核心与报告生成器  
-├── strategies.py       \# \[策略\] 具体的策略实现 (如 PureMomentum, RiskManagedMomentum)  
-├── run\_research.py     \# \[入口\] 批量回测与研究脚本  
-├── config.py           \# \[配置\] 全局参数配置  
-├── infra/              \# \[底层\] 数据仓库管理 (Parquet 读写、Akshare 同步逻辑)  
-├── utils/              \# \[工具\] 通用工具函数与常量定义  
-└── logs/               \# \[日志\] 运行日志
+2. 配置文件
+为了保护隐私，钉钉机器人的密钥不再硬编码。请在项目根目录创建一个 .env 文件：
+# .env 文件
+DINGTALK_WEBHOOK=[https://oapi.dingtalk.com/robot/send?access_token=你的Token](https://oapi.dingtalk.com/robot/send?access_token=你的Token)
+DINGTALK_SECRET=你的加签密钥
 
-## **🛠️ 快速开始**
 
-### **1\. 环境准备**
+3. 运行回测
+一切就绪后，直接运行统一入口脚本：
+python run.py
 
-本项目使用 pyproject.toml 管理依赖，并默认要求使用 [**uv**](https://github.com/astral-sh/uv) 进行高效的包管理和环境配置。
 
-1. **安装 uv** (如果尚未安装):  
-   pip install uv
+程序将自动：
+检查并同步最新的 ETF 数据。
+计算配置在 run.py 中的所有策略因子。
+生成回测净值曲线、夏普比率等指标。
+保存对比图表 backtest_result.png。
+🛠️ 开发指南
+如何添加一个新因子？
+你只需要在 factors/library.py 中继承 Factor 类并实现 calculate 方法。
+示例：添加一个“日内波动率”因子
+# factors/library.py
 
-2. 初始化与同步依赖:  
-   在项目根目录下运行以下命令，uv 将根据 pyproject.toml 自动创建虚拟环境并安装所需依赖：  
-   uv sync
+class IntradayVolatility(Factor):
+    def __init__(self, window: int = 14):
+        super().__init__(f"IntradayVol_{window}")
+        self.window = window
+    
+    # 使用 **kwargs 自动接收 high 和 low 数据
+    # 只要数据源里有这两列，这里就能直接用
+    def calculate(self, high, low, **kwargs):
+        daily_range = (high - low) / low
+        # 返回滚动均值
+        return daily_range.rolling(self.window).mean()
 
-### **2\. 数据准备**
 
-本项目使用 infra 模块管理数据。首次运行时，您可以在 run\_research.py 中开启自动同步，或者手动调用同步脚本。
+如何构建新策略？
+在 run.py 中，你不需要写新的策略类，只需要配置 FactorRotationStrategy：
+# run.py
 
-数据将存储在 data/ 或 infra 配置的目录下的 Parquet 文件中。
+strategies = [
+    # 策略示例：低波动动量策略
+    FactorRotationStrategy(
+        factors=[
+            (Momentum(20), 1.0),         # 动量因子，权重 1.0 (越高越好)
+            (IntradayVolatility(14), -0.5) # 波动因子，权重 -0.5 (越低越好)
+        ],
+        top_k=1, # 每日持有排名前 1 的标的
+        timing_period=60 # 可选：必须站上 60 日均线才持有
+    )
+]
 
-### **3\. 运行回测**
 
-直接运行研究入口脚本：
-
-python run\_research.py
-
-该脚本会执行以下操作：
-
-1. 通过 ParquetDataProvider 加载指定时间段的 ETF 数据。  
-2. 初始化多个不同参数的策略实例（例如 20日动量 vs 30日动量）。  
-3. 运行回测引擎计算净值曲线。  
-4. 打印各策略的夏普比率与累计收益。  
-5. 生成策略对比图表 (strategy\_comparison.png)。  
-6. 为表现最好的策略生成详细的 HTML 报告 (report\_StrategyName.html)。
-
-## **🧩 模块说明**
-
-### **数据层 (data.py & infra/)**
-
-* **ParquetDataProvider**: 实现了 core.DataProvider 接口。它不直接下载数据，而是调用 infra 层的接口读取本地 Parquet 文件，并将其转换为策略所需的宽表格式 (DataFrame, Index=Date, Columns=Symbols)。  
-* **infra/**: 负责底层的 Akshare 数据下载、清洗、去重以及写入 Parquet 文件。支持断点续传和增量更新。
-
-### **策略层 (strategies.py)**
-
-所有策略均继承自 core.Strategy。
-
-* **PureMomentumStrategy**: 纯粹的动量策略，持有过去 N 天涨幅最高的标的。  
-* **RiskManagedMomentumStrategy**: 引入反转因子的改进版策略，通过 Rank 加权 (动量 \- 反转) 来规避短期过热标的。
-
-### **引擎层 (engine.py)**
-
-* **BacktestEngine**: 专注于资金曲线的计算。它接收宽表数据和策略信号，输出 BacktestResult。  
-* **ReportGenerator**: 基于 quantstats 生成专业的 HTML 回测报告。
-
-## **⚙️ 配置指南**
-
-在 config.py 中修改全局配置：
-
-\# 目标资产池 (ETF 代码)  
-ETF\_SYMBOLS \= \["510300", "518880", "513100", "159915"\]
-
-\# 默认回测时间段  
-START\_DATE \= "2013-01-01"  
-END\_DATE \= "2024-12-30"
-
-\# 交易费率  
-TRANSACTION\_COST \= 0.0005 
-
-## **📝 开发指南**
-
-**如何添加一个新策略？**
-
-1. 在 strategies.py 中创建一个新类，继承自 Strategy。  
-2. 实现 generate\_signals(self, closes, volumes) 方法，返回每日持仓信号。  
-3. 在 run\_research.py 的 test\_strategies 列表中加入你的新策略实例。
-
-\# 示例  
-class MyNewStrategy(Strategy):  
-    def generate\_signals(self, closes, volumes=None):  
-        \# 你的逻辑...  
-        return signals
-
-## **⚠️ 注意事项**
-
-* **数据完整性**: 首次运行建议在 run\_research.py 中设置 auto\_sync=True 以确保本地有完整数据。  
-* **Parquet 依赖**: 必须安装 pyarrow 库才能读写 Parquet 文件。
+📊 数据说明
+数据存放在 infra/data 目录下，格式为 Parquet。
+core/data.py 中的 DataLoader 会自动处理数据的读取、对齐和清洗，并返回一个包含所有字段的字典：
+data['close']: 收盘价宽表
+data['open']: 开盘价宽表
+data['high']: 最高价宽表
+... 以及任何底层数据源包含的字段
+Happy Quant Trading! 📈
