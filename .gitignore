@@ -12,4 +12,4 @@ uv.lock
 *.csv
 *.png
 *.pdf
-/None
+*.parquet
