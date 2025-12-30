@@ -2,7 +2,7 @@ import pandas as pd
 from datetime import datetime
 from typing import List, Dict
 from infra.repo import sync_latest_etf_data, read_data_range
-from utils import DataType, Klt, logger  # 引入 logger
+from utils import DataType, Klt, logger
 from utils.const import DATETIME, CODE
 
 
@@ -14,13 +14,23 @@ class DataLoader:
 
     def load(self, symbols: List[str]) -> Dict[str, pd.DataFrame]:
         """
-        加载数据并返回一部字典，包含所有可用的字段。
+        加载数据并返回一个字典，包含所有可用的字段。
         """
         # 1. 自动同步
         if self.auto_sync:
             try:
-                logger.info(f"[Data] Syncing latest data for {len(symbols)} symbols...")
-                sync_latest_etf_data(codes=symbols, include_tick=False)
+                logger.info(
+                    f"[Data] Syncing data from {self.start_date.date()} to {self.end_date.date()} for {len(symbols)} symbols...")
+
+                # --- 修复：显式传递时间范围，确保同步该段历史数据 ---
+                sync_latest_etf_data(
+                    codes=symbols,
+                    include_tick=False,
+                    beg_date=self.start_date,
+                    end_date=self.end_date
+                )
+                # -----------------------------------------------
+
             except Exception as e:
                 logger.warning(f"[Data] Auto-sync failed: {e}")
 

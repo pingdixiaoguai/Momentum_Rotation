@@ -40,7 +40,7 @@ class SimpleEngine:
 
 def main():
     # 1. 加载数据
-    loader = DataLoader("2020-01-01", "2025-12-30", auto_sync=True)
+    loader = DataLoader("2013-01-01", "2025-12-30", auto_sync=True)
     # data_dict 包含 'close', 'open', 'high', 'low' 等所有可用字段
     data_dict = loader.load(config.ETF_SYMBOLS)
 
