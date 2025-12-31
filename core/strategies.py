@@ -12,8 +12,13 @@ class FactorRotationStrategy(Strategy):
     def __init__(self,
                  factors: List[Tuple[Factor, float]],
                  top_k: int = 1,
-                 timing_period: int = 0):
-        super().__init__(f"Rotation_Top{top_k}")
+                 timing_period: int = 0,
+                 name: str = None):
+
+        if name is None:
+            name = f"Rotation_Top{top_k}"
+
+        super().__init__(name)
         self.factors = factors
         self.top_k = top_k
         self.timing_period = timing_period
