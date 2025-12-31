@@ -3,10 +3,11 @@ import time as time_module
 import pandas as pd
 from utils import logger, Klt, DataType
 from utils.const import *
+from cachetools import TTLCache, cached
 from . import ROOT_DATA_DIR, TICK_INTERVAL
 import pyarrow as pa
 import pyarrow.parquet as pq
-from typing import Dict, List, Any, Callable
+from typing import Dict, List, Optional, Any, Callable
 from pathlib import Path
 from cachetools import TTLCache, cached
 from datetime import datetime, timedelta, date, time
@@ -259,9 +260,9 @@ def sync_latest_etf_data(codes: List[str] = [],
 
     # 1. 尝试获取 ETF 列表用于名称匹配（但不依赖它过滤）
     try:
-        etf_info = ak.fund_name_em()
-        etf_info = etf_info[['基金代码', '基金简称']]
-        etf_info.rename(columns={'基金简称': NAME, '基金代码': CODE}, inplace=True)
+        etf_info = ak.fund_etf_spot_em()
+        etf_info = etf_info[['代码', '名称']]
+        etf_info.rename(columns={'名称': NAME, '代码': CODE}, inplace=True)
         # 确保格式一致（去除空白）
         etf_info[CODE] = etf_info[CODE].astype(str).str.strip()
     except Exception as e:
