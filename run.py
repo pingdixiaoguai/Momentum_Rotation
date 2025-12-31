@@ -16,7 +16,7 @@ class SimpleEngine:
 
         # 1. 准备基础数据
         if 'close' not in data_dict: raise ValueError("Engine needs 'close' price.")
-        opens = data_dict.get('open', data_dict['close'])
+        opens = data_dict['close']
 
         # 2. 获取目标权重 (核心逻辑)
         target_weights = strategy.generate_target_weights(**data_dict)
