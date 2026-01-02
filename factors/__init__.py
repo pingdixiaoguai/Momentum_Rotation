@@ -4,11 +4,13 @@
 from .momentum import Momentum
 from .volatility import Volatility, IntradayVolatility
 from .reversion import MeanReversion
+from .bias import MainLineBias
 
 # 方便使用 import *
 __all__ = [
     'Momentum',
     'Volatility',
     'IntradayVolatility',
-    'MeanReversion'
+    'MeanReversion',
+    'MainLineBias'
 ]

@@ -315,7 +315,7 @@ def sync_latest_etf_data(codes: List[str] = [],
             # 使用更宽容的重试机制，防止网络波动导致数据缺失
             df = _execute_with_retry(ak.fund_etf_hist_em, context, retry_times=3)
 
-            # 防止接口返回 None 导致报错
+            # 防止接口返回 data 导致报错
             if df is not None and not df.empty:
                 df.rename(
                     columns={'日期': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW, '成交量': VOLUME,
