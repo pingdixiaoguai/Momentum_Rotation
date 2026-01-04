@@ -310,7 +310,7 @@ def sync_latest_etf_data(codes: List[str] = [],
 
         if should_fetch_daily:
             context = {'symbol': code, 'period': 'daily', 'start_date': beg_date.strftime('%Y%m%d'),
-                       'end_date': end_date.strftime('%Y%m%d'), 'adjust': ''}
+                       'end_date': end_date.strftime('%Y%m%d'), 'adjust': 'hfq'}
 
             # 使用更宽容的重试机制，防止网络波动导致数据缺失
             df = _execute_with_retry(ak.fund_etf_hist_em, context, retry_times=3)
