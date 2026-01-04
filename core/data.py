@@ -1,7 +1,24 @@
+import sys
+import os
+
+# 获取项目根目录（Quant目录）
+project_root = "/Users/hujiaoyuan/Desktop/Quant"
+sys.path.insert(0, project_root)
+
+# 或者自动获取（推荐）
+current_dir = os.path.dirname(os.path.abspath(__file__))  # core目录
+project_root = os.path.dirname(os.path.dirname(current_dir))  # Quant目录
+sys.path.insert(0, project_root)
+
+# 现在导入
+from infra.repo import sync_latest_etf_data, read_data_range
+
+
+
 import pandas as pd
 from datetime import datetime
 from typing import List, Dict
-from infra.repo import sync_latest_etf_data, read_data_range
+# from infra.repo import sync_latest_etf_data, read_data_range
 from utils import DataType, Klt, logger
 from utils.const import DATETIME, CODE
 

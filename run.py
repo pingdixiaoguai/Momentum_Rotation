@@ -39,7 +39,7 @@ class SimpleEngine:
 def main():
     # 1. 加载数据
     # 注意：这里会根据 auto_sync=True 自动拉取数据
-    loader = DataLoader("2013-08-01", "2025-12-30", auto_sync=False)
+    loader = DataLoader("2013-08-01", "2025-12-31", auto_sync=False)
 
     # 你的ETF池子
     symbols = config.ETF_SYMBOLS
@@ -60,18 +60,18 @@ def main():
     strategies = [
         # 第 1 个策略：仅使用 20 日动量
         FactorRotationStrategy(
-            factors=[(Momentum(20), 1.0)],
+            factors=[(Momentum(20), 1.0), (Momentum(3), 1.0)],
             top_k=1,
             timing_period=0,
             name= "Momentum_20"
         ),
         # 第 2 个策略：使用 20 日动量 + 绝对动量
-        FactorRotationStrategy(
-            factors=[(Momentum(20), 1.0)],
-            top_k=1,
-            timing_period=60,
-            name= "Momentum_60"
-        )
+        # FactorRotationStrategy(
+        #     factors=[(Momentum(20), 1.0)],
+        #     top_k=1,
+        #     timing_period=60,
+        #     name= "Momentum_60"
+        # )
     ]
 
     # 3. 执行回测并生成报告
