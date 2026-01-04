@@ -1,61 +1,43 @@
 import pandas as pd
-import numpy as np
 from .base import Strategy, Factor
-from typing import List, Tuple
+from typing import Dict, Callable
 
 
-class FactorRotationStrategy(Strategy):
+class CustomStrategy(Strategy):
     """
-    通用因子轮动策略
+    [新增] 通用自定义逻辑策略 (CustomStrategy)
+
+    1. 传入任意数量的因子 (通过字典命名)。
+    2. 传入一个 python 函数 (logic_func) 来编写你的选股/择时逻辑。
+
+    这样你就不需要每次为了改逻辑而去修改 core/strategies.py 源码了。
     """
 
     def __init__(self,
-                 factors: List[Tuple[Factor, float]],
-                 top_k: int = 1,
-                 timing_period: int = 0,
-                 name: str = None):
-
-        if name is None:
-            name = f"Rotation_Top{top_k}"
-
+                 factors: Dict[str, Factor],
+                 logic_func: Callable[[Dict[str, pd.DataFrame], pd.DataFrame], pd.DataFrame],
+                 name: str = "Custom"):
+        """
+        :param factors: 因子字典, e.g. {'mom': Momentum(20), 'bias': Bias(20)}
+        :param logic_func: 自定义逻辑函数。
+                           签名必须是: def my_logic(factor_values, closes) -> weights
+        """
         super().__init__(name)
         self.factors = factors
-        self.top_k = top_k
-        self.timing_period = timing_period
+        self.logic_func = logic_func
 
     def generate_target_weights(self, **kwargs) -> pd.DataFrame:
-        # 必须要有收盘价用于对齐索引
         if 'close' not in kwargs:
             raise ValueError("Strategy requires 'close' price data.")
-
         closes = kwargs['close']
 
-        # 1. 计算合成因子得分
-        combined_score = pd.DataFrame(0.0, index=closes.index, columns=closes.columns)
+        # 1. 计算所有因子值
+        factor_values = {}
+        for name, factor in self.factors.items():
+            factor_values[name] = factor.calculate(**kwargs)
 
-        for factor, weight in self.factors:
-            # !!! 关键点：直接把所有数据传给因子，因子自己挑 !!!
-            raw_score = factor.calculate(**kwargs)
-
-            # 截面标准化 (Rank化)
-            rank_score = raw_score.rank(axis=1, pct=True)
-            combined_score += rank_score * weight
-
-        combined_score = combined_score.dropna(how='all')
-
-        # 2. 生成持仓信号 (Top K)
-        daily_rank = combined_score.rank(axis=1, ascending=False, method='min')
-
-        # 初始权重
-        target_weights = (daily_rank <= self.top_k).astype(float)
-        # 归一化
-        target_weights = target_weights.div(target_weights.sum(axis=1).replace(0, 1), axis=0)
-
-        # 3. (可选) 绝对动量择时
-        if self.timing_period > 0:
-            ma = closes.rolling(window=self.timing_period).mean()
-            # 只有价格 > 均线 才持有
-            trend_filter = (closes > ma).astype(int)
-            target_weights = target_weights * trend_filter
+        # 2. 调用用户传入的逻辑函数
+        # 我们把计算好的因子值字典和收盘价传给它
+        target_weights = self.logic_func(factor_values, closes)
 
         return target_weights
