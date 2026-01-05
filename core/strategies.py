@@ -74,6 +74,6 @@ class FactorRotationStrategy(Strategy):
             trend_filter = (closes > ma).astype(int)
             target_weights = target_weights * trend_filter
 
-        print("target_weights:", "\n", target_weights['2024-09-26':'2024-10-21'])
+        print("target_weights:", "\n", target_weights['2025-12-26':])
 
         return target_weights
