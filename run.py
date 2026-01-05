@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pandas as pd
 import quantstats as qs
 import config
@@ -47,7 +49,7 @@ class SimpleEngine:
 
 def main():
     # 1. 加载数据
-    loader = DataLoader("2013-08-01", "2025-12-30", auto_sync=False)
+    loader = DataLoader("2013-08-01", datetime.now().strftime("%Y-%m-%d"), auto_sync=True)
     symbols = config.ETF_SYMBOLS
     data_dict = loader.load(symbols)
 

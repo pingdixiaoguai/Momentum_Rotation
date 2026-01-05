@@ -59,14 +59,36 @@ def get_latest_trade_date() -> date:
 
 
 def save_date(df: pd.DataFrame, data_dir: Path, is_tick: bool):
+    """
+    保存数据到 Parquet 文件
+    修复：增加空值过滤和年份强制取整，防止出现 '2026.0' 这样的文件夹
+    """
     if (df.empty): return
-    df = df.drop_duplicates(subset=[DATETIME, CODE])
+
+    # 1. 确保日期列没有 NaT (脏数据会导致年份变成 float)
+    df = df.dropna(subset=[DATETIME])
+    if df.empty: return
+
+    # 2. 去重，保留最新的
+    df = df.drop_duplicates(subset=[DATETIME, CODE], keep='last')
+
     code_df = df.groupby(df[CODE])
     for code, code_group in code_df:
+        # 注意：这里如果 Series 含有浮点数，dt.year 可能是 float
         grouped_df = code_group.groupby(df[DATETIME].dt.year)
+
         for year, group in grouped_df:
+            # --- 修复核心：强制转 int 再转 str，避免 '2026.0' ---
+            try:
+                year_str = str(int(year))
+            except Exception:
+                # 兜底：如果 year 真是无法转换的怪东西，直接跳过
+                logger.warning(f"Invalid year detected for {code}: {year}, skipping...")
+                continue
+            # -----------------------------------------------
+
             if is_tick:
-                index_year_dir = data_dir / code / str(year) / 'tick'
+                index_year_dir = data_dir / code / year_str / 'tick'
                 index_year_dir.mkdir(parents=True, exist_ok=True)
                 day_grouped_df = group.groupby(df[DATETIME].dt.date)
                 for day, day_group in day_grouped_df:
@@ -74,23 +96,25 @@ def save_date(df: pd.DataFrame, data_dir: Path, is_tick: bool):
                     table = pa.Table.from_pandas(day_group, preserve_index=False)
                     pq.write_table(table, index_year_dir / f'{day_str}.parquet')
             else:
-                index_year_dir = data_dir / code / str(year)
+                index_year_dir = data_dir / code / year_str
                 index_year_dir.mkdir(parents=True, exist_ok=True)
-                data_path = index_year_dir / f'{year}.parquet'
+                data_path = index_year_dir / f'{year_str}.parquet'
+
                 dfs = []
                 if data_path.exists():
-                    temp_table = pq.read_table(data_path)
-                    dfs.append(temp_table.to_pandas())
+                    try:
+                        temp_table = pq.read_table(data_path)
+                        dfs.append(temp_table.to_pandas())
+                    except Exception as e:
+                        logger.error(f"Failed to read existing parquet {data_path}: {e}")
+
                 dfs.append(group)
 
-                df = pd.concat(dfs, ignore_index=True, sort=False)
+                # 合并并再次去重
+                full_df = pd.concat(dfs, ignore_index=True, sort=False)
+                full_df = full_df.drop_duplicates(subset=[DATETIME, CODE], keep='last')
 
-                # --- 新增去重逻辑 ---
-                # 确保同一代码在同一时间点只有一条记录，保留最后一次更新的(keep='last')
-                df = df.drop_duplicates(subset=[DATETIME, CODE], keep='last')
-                # ------------------
-
-                table = pa.Table.from_pandas(df, preserve_index=False)
+                table = pa.Table.from_pandas(full_df, preserve_index=False)
                 pq.write_table(table, data_path)
 
 
@@ -258,64 +282,107 @@ def sync_latest_etf_data(codes: List[str] = [],
     codes = list(set(codes))
     etf_root_dir = get_data_dir(DataType.ETF)
 
-    # 1. 尝试获取 ETF 列表用于名称匹配（但不依赖它过滤）
-    try:
-        etf_info = ak.fund_etf_spot_em()
-        etf_info = etf_info[['代码', '名称']]
-        etf_info.rename(columns={'名称': NAME, '代码': CODE}, inplace=True)
-        # 确保格式一致（去除空白）
-        etf_info[CODE] = etf_info[CODE].astype(str).str.strip()
-    except Exception as e:
-        logger.warning(f"Failed to fetch ETF name list: {e}. Will proceed without names.")
-        etf_info = pd.DataFrame(columns=[CODE, NAME])
+    # --- 优化：仅在未指定 codes 时拉取全量列表 ---
+    target_df = pd.DataFrame()
 
-    # 2. 构建目标遍历列表 (target_df)
-    if len(codes) > 0:
-        # 如果用户指定了 codes，以用户的为准！
-        target_df = pd.DataFrame({CODE: [str(c).strip() for c in codes]})
-        # 尝试关联名称，关联不上的就用 Code 当名称
-        target_df = pd.merge(target_df, etf_info, on=CODE, how='left')
-        target_df[NAME] = target_df[NAME].fillna(target_df[CODE])
+    if len(codes) == 0:
+        # Case A: 用户未指定代码 -> 拉取全量列表
+        try:
+            logger.info("Fetching full ETF list from AkShare (no codes provided)...")
+            etf_info = ak.fund_etf_spot_em()
+            etf_info = etf_info[['代码', '名称']]
+            etf_info.rename(columns={'名称': NAME, '代码': CODE}, inplace=True)
+            etf_info[CODE] = etf_info[CODE].astype(str).str.strip()
+            target_df = etf_info
+        except Exception as e:
+            logger.error(f"Failed to fetch ETF list: {e}")
+            return
     else:
-        # 没指定就跑全量（慎用，量很大）
-        target_df = etf_info
+        # Case B: 用户指定了代码 -> 跳过全量列表拉取，直接构建，尝试从本地恢复名称
+        logger.info(f"Using provided ETF codes: {codes} (Skipping full list fetch)")
+        data_list = []
+        for code in codes:
+            code = str(code).strip()
+            name = code  # 默认名字为代码，之后尝试从本地恢复
+
+            # 尝试从本地 Parquet 文件读取真实名称 (Name)
+            try:
+                target_code_dir = etf_root_dir / code
+                if target_code_dir.exists():
+                    # 找到最近的年份文件夹
+                    years = [y for y in os.listdir(target_code_dir) if y.isdigit()]
+                    if years:
+                        max_year = max(years, key=int)
+                        daily_file = target_code_dir / max_year / f"{max_year}.parquet"
+                        if daily_file.exists():
+                            # 快速读取 Name 列（只读一行即可）
+                            table = pq.read_table(daily_file, columns=[NAME])
+                            if table.num_rows > 0:
+                                name_val = table.column(NAME)[0].as_py()
+                                if name_val:
+                                    name = name_val
+            except Exception:
+                pass  # 如果读取失败，就继续使用 code 作为 name
+
+            data_list.append({CODE: code, NAME: name})
+
+        target_df = pd.DataFrame(data_list)
 
     # 3. 开始遍历同步
-    dfs = []
+    # 移除 dfs 列表，改为 loop 内直接 save
     logger.info(f'Start to synchronize ETF data (Count: {len(target_df)})')
 
     for _, row in tqdm(target_df.iterrows(), total=target_df.shape[0]):
         code = row[CODE]
         name = row[NAME]
 
-        # --- 本地数据检查逻辑 (开始) ---
-        should_fetch_daily = True
+        # --- 优化：每只 ETF 单独处理，互不影响 ---
+        try:
+            # 默认下载范围
+            fetch_start = beg_date
 
-        # 仅针对“同步最新一日”场景进行优化 (beg_date 与 end_date 相差1天)
-        if (end_date - beg_date).days <= 1:
-            target_year = str(beg_date.year)
-            target_daily_file = etf_root_dir / code / target_year / f'{target_year}.parquet'
+            # 1. 检查本地已有数据的最新日期 (实现真正的增量更新)
+            local_latest_date = None
+            try:
+                target_code_dir = etf_root_dir / code
+                if target_code_dir.exists():
+                    # 寻找年份最大的文件夹
+                    years = [y for y in os.listdir(target_code_dir) if y.isdigit()]
+                    if years:
+                        max_year = max(years, key=int)
+                        # 读取该年 daily parquet
+                        daily_file = target_code_dir / max_year / f"{max_year}.parquet"
+                        if daily_file.exists():
+                            # 快速读取 datetime 列的最大值
+                            table = pq.read_table(daily_file, columns=[DATETIME])
+                            if table.num_rows > 0:
+                                max_ts = table.column(DATETIME).to_pandas().max()
+                                # 转换为 python datetime
+                                if pd.notna(max_ts):
+                                    local_latest_date = max_ts.to_pydatetime()
+            except Exception as check_err:
+                # 检查出错不影响下载，降级为全量
+                logger.warning(f"Failed to check local history for {code}: {check_err}")
 
-            if target_daily_file.exists():
-                try:
-                    # 快速读取 DATETIME 列以检查日期是否存在
-                    table = pq.read_table(target_daily_file, columns=[DATETIME])
-                    existing_dates = table.column(DATETIME).to_pandas().dt.date
-                    if beg_date.date() in existing_dates.values:
-                        should_fetch_daily = False
-                        logger.info(f"Skipping {code}: Daily data for {beg_date.date()} already exists.")
-                except Exception as e:
-                    logger.warning(f"Failed to check local data for {code}: {e}")
-        # --- 本地数据检查逻辑 (结束) ---
+            # 2. 动态调整下载开始时间
+            if local_latest_date:
+                # 如果本地最新日期 >= 请求开始日期，说明前面都已经有了
+                if local_latest_date >= fetch_start:
+                    # 从本地最新的下一天开始下
+                    fetch_start = local_latest_date + timedelta(days=1)
 
-        if should_fetch_daily:
-            context = {'symbol': code, 'period': 'daily', 'start_date': beg_date.strftime('%Y%m%d'),
+            # 3. 判断是否需要下载
+            if fetch_start > end_date:
+                logger.info(f"Skipping {code}: Local data ({local_latest_date.date()}) covers request.")
+                continue
+
+            logger.info(f"Syncing {code} from {fetch_start.date()} to {end_date.date()}...")
+
+            context = {'symbol': code, 'period': 'daily', 'start_date': fetch_start.strftime('%Y%m%d'),
                        'end_date': end_date.strftime('%Y%m%d'), 'adjust': 'hfq'}
 
-            # 使用更宽容的重试机制，防止网络波动导致数据缺失
             df = _execute_with_retry(ak.fund_etf_hist_em, context, retry_times=3)
 
-            # 防止接口返回 data 导致报错
             if df is not None and not df.empty:
                 df.rename(
                     columns={'日期': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW, '成交量': VOLUME,
@@ -329,44 +396,54 @@ def sync_latest_etf_data(codes: List[str] = [],
                 df[PRECLOSE] = np.nan
                 df = df[COLUMNS]
                 df = df.astype(COLUMNS_TYPE)
-                dfs.append(df)
+
+                # --- 修复：直接保存当前这只 ETF，不要等到最后 ---
+                save_date(df, etf_root_dir, False)
             else:
                 logger.warning(f"No daily data fetched for {code}")
 
-    save_date(pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame(), etf_root_dir, False)
+        except Exception as e:
+            logger.error(f"Failed to sync ETF {code}: {e}")
+            continue  # 关键：出错后继续下一个，不中断
+
     logger.info(f'Finish synchronizing etf data')
 
     if not include_tick: return
-    dfs = []
+
+    # Tick 数据同理，可以做类似优化，但通常 Tick 数据量大，按天独立性强，此处暂时保留原逻辑或做轻量处理
+    # 为了保持一致性，这里也改为 loop 内保存
     logger.info(f'Start to synchronize etf tick data')
     for _, row in tqdm(target_df.iterrows(), total=target_df.shape[0]):
         code = row[CODE]
         name = row[NAME]
 
-        # --- 分时数据检查逻辑 ---
-        target_tick_file = etf_root_dir / code / str(
-            beg_date.year) / 'tick' / f'{beg_date.strftime("%Y-%m-%d")}.parquet'
-        if target_tick_file.exists():
-            logger.info(f"Skipping {code}: Tick data for {beg_date.date()} already exists.")
+        try:
+            target_tick_file = etf_root_dir / code / str(
+                beg_date.year) / 'tick' / f'{beg_date.strftime("%Y-%m-%d")}.parquet'
+            if target_tick_file.exists():
+                continue
+
+            context = {'symbol': name, 'period': '1'}
+            df = _execute_with_retry(ak.fund_etf_hist_min_em, context, 3)
+            if df is not None and not df.empty:
+                df.rename(
+                    columns={'日期时间': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW,
+                             '成交量': VOLUME,
+                             '成交额': AMOUNT}, inplace=True)
+                df[DATETIME] = pd.to_datetime(df[DATETIME])
+                df[CODE] = code
+                df[NAME] = name
+                df[VOLUME] *= 100
+                df = df[TICK_COLUMNS]
+
+                # --- 修复：直接保存 ---
+                save_date(df, etf_root_dir, True)
+
+            time_module.sleep(TICK_INTERVAL)
+        except Exception as e:
+            logger.error(f"Failed to sync ETF tick {code}: {e}")
             continue
-        # ---------------------
 
-        context = {'symbol': name, 'period': '1'}
-        # 历史分时数据只能获取最近一个交易日的
-        df = _execute_with_retry(ak.fund_etf_hist_min_em, context, 3)
-        if df is not None and not df.empty:
-            df.rename(
-                columns={'日期时间': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW, '成交量': VOLUME,
-                         '成交额': AMOUNT}, inplace=True)
-            df[DATETIME] = pd.to_datetime(df[DATETIME])
-            df[CODE] = code
-            df[NAME] = name
-            df[VOLUME] *= 100
-            df = df[TICK_COLUMNS]
-            dfs.append(df)
-
-        time_module.sleep(TICK_INTERVAL)
-    save_date(pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame(), etf_root_dir, True)
     logger.info(f'Finish synchronizing etf tick data')
 
 

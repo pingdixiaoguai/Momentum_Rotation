@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 import config
 from core.data import DataLoader
-from core.strategies import FactorRotationStrategy
+from core.strategies import CustomStrategy
+from logics import logic_bias_protection
 from utils import logger
 from notifier import send_to_dingtalk, send_at_all_nudge
 
@@ -14,14 +15,14 @@ def get_production_strategy():
     定义生产环境使用的【唯一】策略。
     建议确保这里的配置与 run.py 中回测表现最好的参数一致。
     """
-    strategy = FactorRotationStrategy(
-        factors=[
-            (Momentum(20), 1.0),  # 动量进攻
-            (MainLineBias(20), -0.5)  # 乖离率风控
-        ],
-        top_k=1,
-        timing_period=0
-    )
+    strategy = CustomStrategy(
+            factors={
+                'mom': Momentum(20),      # 20日动量
+                'bias': MainLineBias(20)  # 20日乖离率
+            },
+            logic_func=logic_bias_protection,   # 从 logics 模块导入
+            name="Func_Bias_Filter"
+        )
     strategy.name = "Bias_Momentum"
     return strategy
 
