@@ -282,23 +282,51 @@ def sync_latest_etf_data(codes: List[str] = [],
     codes = list(set(codes))
     etf_root_dir = get_data_dir(DataType.ETF)
 
-    # 1. 尝试获取 ETF 列表
-    try:
-        etf_info = ak.fund_etf_spot_em()
-        etf_info = etf_info[['代码', '名称']]
-        etf_info.rename(columns={'名称': NAME, '代码': CODE}, inplace=True)
-        etf_info[CODE] = etf_info[CODE].astype(str).str.strip()
-    except Exception as e:
-        logger.warning(f"Failed to fetch ETF name list: {e}. Will proceed without names.")
-        etf_info = pd.DataFrame(columns=[CODE, NAME])
+    # --- 优化：仅在未指定 codes 时拉取全量列表 ---
+    target_df = pd.DataFrame()
 
-    # 2. 构建目标列表
-    if len(codes) > 0:
-        target_df = pd.DataFrame({CODE: [str(c).strip() for c in codes]})
-        target_df = pd.merge(target_df, etf_info, on=CODE, how='left')
-        target_df[NAME] = target_df[NAME].fillna(target_df[CODE])
+    if len(codes) == 0:
+        # Case A: 用户未指定代码 -> 拉取全量列表
+        try:
+            logger.info("Fetching full ETF list from AkShare (no codes provided)...")
+            etf_info = ak.fund_etf_spot_em()
+            etf_info = etf_info[['代码', '名称']]
+            etf_info.rename(columns={'名称': NAME, '代码': CODE}, inplace=True)
+            etf_info[CODE] = etf_info[CODE].astype(str).str.strip()
+            target_df = etf_info
+        except Exception as e:
+            logger.error(f"Failed to fetch ETF list: {e}")
+            return
     else:
-        target_df = etf_info
+        # Case B: 用户指定了代码 -> 跳过全量列表拉取，直接构建，尝试从本地恢复名称
+        logger.info(f"Using provided ETF codes: {codes} (Skipping full list fetch)")
+        data_list = []
+        for code in codes:
+            code = str(code).strip()
+            name = code  # 默认名字为代码，之后尝试从本地恢复
+
+            # 尝试从本地 Parquet 文件读取真实名称 (Name)
+            try:
+                target_code_dir = etf_root_dir / code
+                if target_code_dir.exists():
+                    # 找到最近的年份文件夹
+                    years = [y for y in os.listdir(target_code_dir) if y.isdigit()]
+                    if years:
+                        max_year = max(years, key=int)
+                        daily_file = target_code_dir / max_year / f"{max_year}.parquet"
+                        if daily_file.exists():
+                            # 快速读取 Name 列（只读一行即可）
+                            table = pq.read_table(daily_file, columns=[NAME])
+                            if table.num_rows > 0:
+                                name_val = table.column(NAME)[0].as_py()
+                                if name_val:
+                                    name = name_val
+            except Exception:
+                pass  # 如果读取失败，就继续使用 code 作为 name
+
+            data_list.append({CODE: code, NAME: name})
+
+        target_df = pd.DataFrame(data_list)
 
     # 3. 开始遍历同步
     # 移除 dfs 列表，改为 loop 内直接 save
