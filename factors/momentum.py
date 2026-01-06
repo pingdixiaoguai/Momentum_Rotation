@@ -20,7 +20,7 @@ class Momentum(Factor):
         # res = close.pct_change(self.window)
 
         # print("close:", "\n", close['2024-09-20':'2024-10-15'])
-        res = close.rolling(window=24).apply(self.calculate_k, raw=False) #.fillna(0.0),min_periods=20
+        res = close.rolling(window=25).apply(self.calculate_k, raw=False) #.fillna(0.0),min_periods=20
 
         print(res.head(50))
         print(res.describe())

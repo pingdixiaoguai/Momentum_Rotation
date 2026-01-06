@@ -31,11 +31,6 @@ class FactorRotationStrategy(Strategy):
             castle_stg1 = True
             print("[strategies] castle_stg1 = True")
 
-        castle_stg2 = False
-        if "castle_stg2" in self.stg_flag:
-            castle_stg2 = True
-            print("[strategies] castle_stg2 = True")
-
         # 必须要有收盘价用于对齐索引
         if 'close' not in kwargs:
             raise ValueError("Strategy requires 'close' price data.")

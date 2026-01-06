@@ -40,7 +40,7 @@ class Peak(Factor):
         k1 = (max_value - min_value) / (max_pos - min_pos)
         k2 = (last_value - min_value) / (len(series) - 1 - min_pos)
 
-        return (k2 - k1) * k1 * 500
+        return (k2 - k1) * k1 * 280
 
 import config
 from core.data import DataLoader
