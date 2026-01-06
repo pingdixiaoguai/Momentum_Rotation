@@ -64,10 +64,10 @@ def main():
         CustomStrategy(
             factors={
                 'mom': Momentum(20),      # 20日动量
-                'vol': Volatility(20)     # 20日波动率
+                'bias': MainLineBias(20)  # 20日乖离率
             },
-            logic_func=logic_weighted_rotation, # 从 logics 模块导入
-            name="Func_Weighted_MomVol"
+            logic_func=logic_bias_protection, # 从 logics 模块导入
+            name="Func_Bias"
         ),
 
         # --- 策略 B: 灵活的乖离率风控 ---
