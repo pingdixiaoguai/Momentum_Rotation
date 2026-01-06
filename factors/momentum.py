@@ -16,74 +16,26 @@ class Momentum(Factor):
         """
         :param close: 收盘价宽表 (Index=Date, Columns=Assets)
         """
-        # 逻辑：过去 N 天的收益率
-        # print(type(close), '\n', close.head())
-        # print(close[1000:1200])
+        print(close.head(50))
+        # res = close.pct_change(self.window)
 
-        # 应用滚动归一化
-        # close = close.apply(self.rolling_zscore)
-        # close = close.apply(lambda col: self.rolling_rank(col, window=120))
+        # print("close:", "\n", close['2024-09-20':'2024-10-15'])
+        res = close.rolling(window=24).apply(self.calculate_k, raw=False) #.fillna(0.0),min_periods=20
 
-        # print(close['2022-01-01':'2022-03-01'])
-        # print("统计描述:", close.describe())
-
-        # 警惕冲高回落的动量
-        res = close.pct_change(self.window)
-        # res = res[:30]
-        print(res.head(30))
-
-        over_peak = pd.DataFrame(index=res.index, columns=res.columns)
-
-        # 对每个code列应用rolling窗口计算
-        for code in res.columns:
-            # 使用rolling窗口，窗口大小为20（包含当前行）
-            # 然后对每个窗口应用自定义函数
-            rolled_values = res[code].rolling(window=20, min_periods=20).apply(self.cal_over_peak, raw=False)
-            over_peak[code] = rolled_values
-
-        print(over_peak.head(50))
-
+        print(res.head(50))
+        print(res.describe())
         return res
-    
-    def cal_over_peak(self, series):
-        if len(series) < 2:
-            print(len(series))
-            return np.nan  # 数据不足20行时返回NaN
-        return 1
-
-    def rolling_zscore(self, series, window=120):
-        # 计算滚动均值和标准差
-        rolling_mean = series.rolling(window=window, min_periods=1).mean()
-        rolling_std = series.rolling(window=window, min_periods=1).std()
-        
-        # 计算z-score
-        zscore = (series - rolling_mean) / rolling_std
-        
-        # 处理标准差为0的情况
-        zscore = zscore.replace([np.inf, -np.inf], 0).fillna(0)
-        
-        return zscore
-
-    def rolling_rank(self, series, window=120):
-        # 创建结果序列
-        result = pd.Series(index=series.index, dtype=float)
-        
-        # 对每个位置计算排名
-        for i in range(len(series)):
-            # 确定窗口
-            window_start = max(0, i - window + 1)
-            window_data = series.iloc[window_start:i+1]
-            
-            # 计算排名
-            ranks = window_data.rank(method='average')
-            
-            # 存储当前值的排名
-            result.iloc[i] = ranks.iloc[-1]
-        
-        return result
 
 
+    def calculate_k(self, series):
+        """计算滚动窗口内最大值与第一个值的斜率"""
+        if len(series) < 20:  # 不足20个数据返回NaN
+            return np.nan
 
+        min_value = series.iloc[:3].min()
+        last_value = series.iloc[-1]
+
+        return (last_value/min_value if min_value != 0 else 0.0) - 1
 
 
 

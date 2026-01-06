@@ -7,7 +7,7 @@ from core.strategies import FactorRotationStrategy
 from utils import logger  # 导入 logger
 
 # --- 模块化导入因子 ---
-from factors import Momentum, Volatility, IntradayVolatility, MeanReversion
+from factors import Momentum, Volatility, IntradayVolatility, MeanReversion, Peak
 
 
 class SimpleEngine:
@@ -60,10 +60,12 @@ def main():
     strategies = [
         # 第 1 个策略：仅使用 20 日动量
         FactorRotationStrategy(
-            factors=[(Momentum(20), 1.0), (Momentum(3), 1.0)],
+            factors=[(Momentum(20), 1.0, "Mom_20"), (Peak(20), 1.0, "Peak_20")],
+            # factors=[(Momentum(20), 1.0, "Mom_20")],
             top_k=1,
             timing_period=0,
-            name= "Momentum_20"
+            name= "Momentum_20",
+            stg_flag = ["castle_stg1"]
         ),
         # 第 2 个策略：使用 20 日动量 + 绝对动量
         # FactorRotationStrategy(
