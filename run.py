@@ -77,7 +77,8 @@ def main():
                 'bias': MainLineBias(20)  # 20日乖离率
             },
             logic_func=logic_bias_protection,   # 从 logics 模块导入
-            name="Func_Bias_Filter"
+            name="Func_Bias_Filter",
+            holding_period=5
         )
     ]
 
