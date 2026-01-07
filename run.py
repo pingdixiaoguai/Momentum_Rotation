@@ -7,7 +7,7 @@ import config
 from core.data import DataLoader
 from core.strategies import CustomStrategy
 # 导入需要的因子
-from factors import Momentum, MainLineBias, Peak
+from factors import Momentum, Momentum_castle, MainLineBias, Peak
 # 导入抽离出来的策略逻辑
 from logics import logic_bias_protection, logic_factor_rotation
 from utils import logger
@@ -84,11 +84,12 @@ def main():
             name="Momentum_Peak_Castle",
             # 因子定义
             factors={
-                "Mom_20": Momentum(20),
+                "Mom_20": Momentum_castle(25),
                 "Peak_20": Peak(20)
             },
             # 逻辑函数
             logic_func=logic_factor_rotation,
+            holding_period=0,
             # 这里的参数会被透传给 logic_factor_rotation
             factor_weights={"Mom_20": 1.0, "Peak_20": 1.0},
             top_k=1,
