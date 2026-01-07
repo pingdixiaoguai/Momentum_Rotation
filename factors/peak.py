@@ -10,10 +10,7 @@ class Peak(Factor):
         self.window = window
 
     def calculate(self, close: pd.DataFrame, **kwargs) -> pd.DataFrame:
-        res = close.rolling(window=20, min_periods=2).apply(self.calculate_k, raw=False).fillna(0.0)
-
-        # print(res.head(50))
-        print(res.describe())
+        res = close.rolling(window=20, min_periods=2).apply(self.calculate_k).fillna(0.0)
         return res
 
     def calculate_k(self, series):

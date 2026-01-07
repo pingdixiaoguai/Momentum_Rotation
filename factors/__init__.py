@@ -5,6 +5,7 @@ from .momentum import Momentum
 from .volatility import Volatility, IntradayVolatility
 from .reversion import MeanReversion
 from .bias import MainLineBias
+from .peak import Peak  # 新增 Peak 因子导出
 
 # 方便使用 import *
 __all__ = [
@@ -12,5 +13,6 @@ __all__ = [
     'Volatility',
     'IntradayVolatility',
     'MeanReversion',
-    'MainLineBias'
+    'MainLineBias',
+    'Peak'
 ]
