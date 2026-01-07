@@ -62,7 +62,7 @@ def main():
         # --- 策略 A: 灵活的加权轮动 (动量 + 波动率) ---
         CustomStrategy(
             factors={
-                'mom': Momentum(20),      # 20日动量
+                'mom': Momentum(20,"tradition"),      # 20日动量
                 'bias': MainLineBias(20)  # 20日乖离率
             },
             logic_func=logic_bias_protection, # 从 logics 模块导入
@@ -72,7 +72,7 @@ def main():
         # --- 策略 B: 灵活的乖离率风控 ---
         CustomStrategy(
             factors={
-                'mom': Momentum(20),      # 20日动量
+                'mom': Momentum(20,"tradition"),      # 20日动量
                 'bias': MainLineBias(20)  # 20日乖离率
             },
             logic_func=logic_bias_protection,   # 从 logics 模块导入
@@ -84,11 +84,12 @@ def main():
             name="Momentum_Peak_Castle",
             # 因子定义
             factors={
-                "Mom_20": Momentum(20),
+                "Mom_20": Momentum(25,"castle"),
                 "Peak_20": Peak(20)
             },
             # 逻辑函数
             logic_func=logic_factor_rotation,
+            holding_period=0,
             # 这里的参数会被透传给 logic_factor_rotation
             factor_weights={"Mom_20": 1.0, "Peak_20": 1.0},
             top_k=1,
