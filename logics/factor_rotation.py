@@ -1,5 +1,6 @@
 import pandas as pd
 from typing import Dict, List, Optional
+from utils import logger
 
 
 def logic_factor_rotation(factor_values: Dict[str, pd.DataFrame],
@@ -10,14 +11,10 @@ def logic_factor_rotation(factor_values: Dict[str, pd.DataFrame],
                           timing_period: int = 0) -> pd.DataFrame:
     """
     【逻辑函数】通用因子轮动逻辑
-    实现了原 FactorRotationStrategy 的所有功能，包括 castle_stg1 风控和均线择时。
 
-    :param factor_values: 计算好的因子值字典 {'Mom_20': df, ...}
-    :param closes: 收盘价 DataFrame
-    :param factor_weights: 因子权重字典 {'Mom_20': 1.0, 'Peak_20': 0.5}
-    :param top_k: 选股数量
-    :param stg_flag: 策略标志位列表，如 ['castle_stg1']
-    :param timing_period: 均线择时周期，0 表示不启用
+    复刻用户原始逻辑：
+    1. 默认使用因子的【原始值 (Raw Score)】进行合成（非标准化）。
+    2. 仅在 castle_stg1 开启且因子为 Mom_20 时，使用 Rank(pct=True) 并计算风控掩码。
     """
 
     # 0. 初始化
@@ -30,19 +27,29 @@ def logic_factor_rotation(factor_values: Dict[str, pd.DataFrame],
     for name, raw_score in factor_values.items():
         weight = factor_weights.get(name, 1.0)  # 默认权重 1.0
 
+        current_score = None
+
         # --- 特殊逻辑: castle_stg1 ---
-        # 如果是 Mom_20 且开启了 castle_stg1，检测全市场最大动量
+        # 只有在开启策略标志位，且当前因子是 Mom_20 时，才进行特殊处理
         if castle_stg1 and name == "Mom_20":
+            # 1. 计算风控掩码 (全市场最大动量 < -0.1)
             row_max = raw_score.max(axis=1)
-            # 如果某天的最大动量 <= -0.1，说明市场环境极差
-            # 使用逻辑 OR 累积风险掩码 (虽然通常只有一个 Mom 因子，但为了稳健)
             risk_mask = risk_mask | (row_max <= -0.1)
 
-        # 计算排名分 (Pct Rank)
-        rank_score = raw_score.rank(axis=1, pct=True)
+            # 2. 使用百分比排名 (0~1)
+            # 对应原代码：rank_score = raw_score.rank(axis=1, pct=True)
+            current_score = raw_score.rank(axis=1, pct=True)
+
+            # logger.info(f"[{name}] Applied Rank Normalization (Castle STG1)")
+        else:
+            # --- 默认逻辑 ---
+            # 对应原代码：else: rank_score = raw_score
+            # 直接使用原始值！这会导致数值大的因子主导结果。
+            current_score = raw_score
+            # logger.info(f"[{name}] Used Raw Score")
 
         # 累加加权得分
-        combined_score += rank_score * weight
+        combined_score += current_score * weight
 
     # 去除全空的行（防止干扰排名）
     combined_score = combined_score.dropna(how='all')
@@ -57,8 +64,9 @@ def logic_factor_rotation(factor_values: Dict[str, pd.DataFrame],
     # 3. 应用特殊风控 (castle_stg1)
     if castle_stg1:
         if risk_mask.sum() > 0:
-            # print(f"[Logic] Castle STG1 triggered on {risk_mask.sum()} days.")
             pass
+            # logger.info(f"[Risk] Castle STG1 triggered on {risk_mask.sum()} days.")
+
         # 将触发风控的日期权重设为 0
         target_weights.loc[risk_mask, :] = 0.0
 
