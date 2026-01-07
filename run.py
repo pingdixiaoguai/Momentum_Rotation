@@ -59,17 +59,7 @@ def main():
 
     # 2. 组装策略
     strategies = [
-        # --- 策略 A: 灵活的加权轮动 (动量 + 波动率) ---
-        CustomStrategy(
-            factors={
-                'mom': Momentum(20),      # 20日动量
-                'bias': MainLineBias(20)  # 20日乖离率
-            },
-            logic_func=logic_bias_protection, # 从 logics 模块导入
-            name="Func_Bias"
-        ),
-
-        # --- 策略 B: 灵活的乖离率风控 ---
+        # --- 策略 : 灵活的乖离率风控 ---
         CustomStrategy(
             factors={
                 'mom': Momentum(20),      # 20日动量
@@ -77,7 +67,7 @@ def main():
             },
             logic_func=logic_bias_protection,   # 从 logics 模块导入
             name="Func_Bias_Filter",
-            holding_period=5
+            holding_period=1
         ),
 
         CustomStrategy(
@@ -89,7 +79,7 @@ def main():
             },
             # 逻辑函数
             logic_func=logic_factor_rotation,
-            holding_period=0,
+            holding_period=1,
             # 这里的参数会被透传给 logic_factor_rotation
             factor_weights={"Mom_20": 1.0, "Peak_20": 1.0},
             top_k=1,
