@@ -7,7 +7,7 @@ import config
 from core.data import DataLoader
 from core.strategies import CustomStrategy
 # 导入需要的因子
-from factors import Momentum, MainLineBias, Peak
+from factors import Momentum, Momentum_castle, MainLineBias, Peak
 # 导入抽离出来的策略逻辑
 from logics import logic_bias_protection, logic_factor_rotation
 from utils import logger
@@ -62,7 +62,7 @@ def main():
         # --- 策略 A: 灵活的加权轮动 (动量 + 波动率) ---
         CustomStrategy(
             factors={
-                'mom': Momentum(20,"tradition"),      # 20日动量
+                'mom': Momentum(20),      # 20日动量
                 'bias': MainLineBias(20)  # 20日乖离率
             },
             logic_func=logic_bias_protection, # 从 logics 模块导入
@@ -72,7 +72,7 @@ def main():
         # --- 策略 B: 灵活的乖离率风控 ---
         CustomStrategy(
             factors={
-                'mom': Momentum(20,"tradition"),      # 20日动量
+                'mom': Momentum(20),      # 20日动量
                 'bias': MainLineBias(20)  # 20日乖离率
             },
             logic_func=logic_bias_protection,   # 从 logics 模块导入
@@ -84,7 +84,7 @@ def main():
             name="Momentum_Peak_Castle",
             # 因子定义
             factors={
-                "Mom_20": Momentum(25,"castle"),
+                "Mom_20": Momentum_castle(25),
                 "Peak_20": Peak(20)
             },
             # 逻辑函数
