@@ -2,16 +2,15 @@ from datetime import datetime
 
 import pandas as pd
 import quantstats as qs
+
 import config
 from core.data import DataLoader
 from core.strategies import CustomStrategy
-from utils import logger
-
 # 导入需要的因子
-from factors import Momentum, Volatility, MainLineBias
-
+from factors import Momentum, MainLineBias, Peak
 # 导入抽离出来的策略逻辑
-from logics import logic_weighted_rotation, logic_bias_protection
+from logics import logic_bias_protection, logic_factor_rotation
+from utils import logger
 
 
 # ==========================================
@@ -79,6 +78,22 @@ def main():
             logic_func=logic_bias_protection,   # 从 logics 模块导入
             name="Func_Bias_Filter",
             holding_period=5
+        ),
+
+        CustomStrategy(
+            name="Momentum_Peak_Castle",
+            # 因子定义
+            factors={
+                "Mom_20": Momentum(20),
+                "Peak_20": Peak(20)
+            },
+            # 逻辑函数
+            logic_func=logic_factor_rotation,
+            # 这里的参数会被透传给 logic_factor_rotation
+            factor_weights={"Mom_20": 1.0, "Peak_20": 1.0},
+            top_k=1,
+            timing_period=0,
+            stg_flag=["castle_stg1"]  # 开启风控
         )
     ]
 
