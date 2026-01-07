@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta
+
 import config
 from core.data import DataLoader
 from core.strategies import CustomStrategy
-from logics import logic_bias_protection
-from utils import logger
-from notifier import send_to_dingtalk, send_at_all_nudge
-
 # 导入因子
-from factors import Momentum, MainLineBias
+from factors import Peak, Momentum_castle
+from logics import logic_factor_rotation
+from notifier import send_to_dingtalk, send_at_all_nudge
+from utils import logger
 
 
 def get_production_strategy():
@@ -16,13 +16,20 @@ def get_production_strategy():
     建议确保这里的配置与 run.py 中回测表现最好的参数一致。
     """
     strategy = CustomStrategy(
+            name="Momentum_Peak_Castle",
+            # 因子定义
             factors={
-                'mom': Momentum(20),      # 20日动量
-                'bias': MainLineBias(20)  # 20日乖离率
+                "Mom_20": Momentum_castle(25),
+                "Peak_20": Peak(20)
             },
-            logic_func=logic_bias_protection,   # 从 logics 模块导入
-            name="Func_Bias_Filter",
-            holding_period=5
+            # 逻辑函数
+            logic_func=logic_factor_rotation,
+            holding_period=1,
+            # 这里的参数会被透传给 logic_factor_rotation
+            factor_weights={"Mom_20": 1.0, "Peak_20": 1.0},
+            top_k=1,
+            timing_period=0,
+            stg_flag=["castle_stg1"]  # 开启风控
         )
     return strategy
 
