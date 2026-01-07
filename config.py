@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 资产池配置
-ETF_SYMBOLS = ["510300", "518880", "513100", "159915"] 
+ETF_SYMBOLS = ["510300", "518880", "513100", "159915"]
 # 沪深300, 黄金, 纳指, 创业板
 
 # 回测配置
