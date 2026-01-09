@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from core.base import Factor
 
-class Momentum(Factor):
+class Momentum_castle(Factor):
     """
     经典动量因子 (Momentum)
     计算公式: (Close_t / Close_{t-N}) - 1
@@ -16,4 +16,14 @@ class Momentum(Factor):
         """
         :param close: 收盘价宽表 (Index=Date, Columns=Assets)
         """
-        return close.pct_change(self.window)
+        return close.rolling(window=self.window).apply(self.calculate_k, raw=False) #.fillna(0.0),min_periods=20
+    
+    def calculate_k(self, series):
+        """计算滚动窗口内最大值与第一个值的斜率"""
+        if len(series) < 20:  # 不足20个数据返回NaN
+            return np.nan
+
+        min_value = series.iloc[:3].min()
+        last_value = series.iloc[-1]
+
+        return (last_value/min_value if min_value != 0 else 0.0) - 1

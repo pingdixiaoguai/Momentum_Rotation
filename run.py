@@ -119,6 +119,17 @@ def main():
 
     # 2. 组装策略
     strategies = [
+        # --- 策略 : 灵活的乖离率风控 ---
+        CustomStrategy(
+            factors={
+                'mom': Momentum(20),      # 20日动量
+                'bias': MainLineBias(20)  # 20日乖离率
+            },
+            logic_func=logic_bias_protection,   # 从 logics 模块导入
+            name="Func_Bias_Filter",
+            holding_period=1
+        ),
+
         CustomStrategy(
             name="Momentum_Peak_Castle",
             # 因子定义
