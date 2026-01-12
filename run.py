@@ -144,7 +144,7 @@ def main():
             factor_weights={"Mom_20": 1.0, "Peak_20": 1.0},
             top_k=1,
             timing_period=0,
-            stg_flag=["castle_stg1"]  # 开启风控
+            stg_flag=[]  # 开启风控 "castle_stg1"
         )
     ]
 

@@ -31,5 +31,7 @@ class Peak(Factor):
         k1 = (max_value - min_value) / (max_pos - min_pos)
         k2 = (last_value - min_value) / (len(series) - 1 - min_pos)
 
-        return (k2 - k1) * k1 * 280
+        # 第一个k1表示斜率越大，下降相同delta_k代表的跌幅越显著
+        # 第二个k1表示斜率越大，对于下降现象越要谨慎
+        return (k2 - k1) * k1 * k1 * 450
 
