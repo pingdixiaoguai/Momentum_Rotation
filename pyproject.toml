@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
-    "akshare==1.18.4",
+    "akshare==1.18.30",
     "pandas==2.3.3",
     "quantstats==0.0.77",
     "Requests==2.32.5",
