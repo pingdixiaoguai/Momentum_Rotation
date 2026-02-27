@@ -35,6 +35,8 @@ DATA_DIR="./data"
 DINGTALK_WEBHOOK="https://oapi.dingtalk.com/robot/send?access_token=..."
 DINGTALK_SECRET="your_secret"
 TICK_INTERVAL=0.2
+# 数据源：akshare（默认，有封IP风险）或 baostock（推荐，稳定）
+DATA_FETCHER=baostock
 ```
 
 ## Architecture
@@ -118,8 +120,23 @@ In `logics/factor_rotation.py`, passing `stg_flag=["castle_stg1"]` activates spe
 ### Configuration
 
 - **`config.py`**: `ETF_SYMBOLS` (list of ETF codes), `START_DATE`, `END_DATE`, `TRANSACTION_COST`.
-- **`.env`**: `DATA_DIR` (required), DingTalk credentials, `TICK_INTERVAL`.
-- `infra/__init__.py` reads `DATA_DIR` and `TICK_INTERVAL` from env at import time.
+- **`.env`**: `DATA_DIR` (required), DingTalk credentials, `TICK_INTERVAL`, `DATA_FETCHER`.
+- `infra/__init__.py` reads `DATA_DIR`, `TICK_INTERVAL`, and `DATA_FETCHER` from env at import time.
+
+### Data Fetcher (`infra/fetchers/`)
+
+ETF daily data fetching is abstracted via `AbstractETFFetcher`. Switch data source via `.env`:
+- `DATA_FETCHER=akshare` (default) — uses AkShare, supports tick data + full ETF list sync
+- `DATA_FETCHER=baostock` — uses BaoStock, no tick data, requires explicit `codes` list
+
+| File | Role |
+|---|---|
+| `infra/fetchers/base.py` | `AbstractETFFetcher` ABC |
+| `infra/fetchers/akshare.py` | AkShare implementation |
+| `infra/fetchers/baostock.py` | BaoStock implementation |
+| `infra/fetchers/__init__.py` | `get_fetcher()` factory |
+
+Only `sync_latest_etf_data` in `repo.py` uses the fetcher. All other sync functions remain AkShare-only.
 
 ### Available Factors (`factors/`)
 

@@ -5,6 +5,7 @@ from utils import logger, Klt, DataType
 from utils.const import *
 from cachetools import TTLCache, cached
 from . import ROOT_DATA_DIR, TICK_INTERVAL
+from .fetchers import get_fetcher
 import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import Dict, List, Optional, Any, Callable
@@ -50,8 +51,31 @@ def _execute_with_retry(func: Callable, context: Dict, retry_times: int = 0, sil
         raise Exception(f'Failed to execute func={func},context={context}.')
 
 
+def _get_latest_trade_date_baostock() -> date:
+    """使用 BaoStock 获取最新交易日（DATA_FETCHER=baostock 时使用）"""
+    import baostock as bs
+    result = bs.login()
+    if result.error_code != '0':
+        raise RuntimeError(f"BaoStock login failed: {result.error_msg}")
+    try:
+        today = date.today()
+        start = (today - timedelta(days=10)).strftime('%Y-%m-%d')
+        end = today.strftime('%Y-%m-%d')
+        rs = bs.query_trade_dates(start_date=start, end_date=end)
+        trade_dates = []
+        while rs.error_code == '0' and rs.next():
+            row = rs.get_row_data()
+            if row[1] == '1':  # is_trading_day
+                trade_dates.append(row[0])
+        return date.fromisoformat(max(trade_dates)) if trade_dates else today
+    finally:
+        bs.logout()
+
+
 @cached(TTLCache(maxsize=2, ttl=60 * 60 * 3))
 def get_latest_trade_date() -> date:
+    if os.getenv("DATA_FETCHER", "akshare").lower() == "baostock":
+        return _get_latest_trade_date_baostock()
     context = {'symbol': '小金属', 'period': '60'}
     df = _execute_with_retry(ak.stock_board_industry_hist_min_em, context, 3)
     trade_time = datetime.strptime(df['日期时间'].max(), '%Y-%m-%d %H:%M')
@@ -281,11 +305,18 @@ def sync_latest_etf_data(codes: List[str] = [],
                          ) -> None:
     codes = list(set(codes))
     etf_root_dir = get_data_dir(DataType.ETF)
+    fetcher = get_fetcher()
 
     # --- 优化：仅在未指定 codes 时拉取全量列表 ---
     target_df = pd.DataFrame()
 
     if len(codes) == 0:
+        if not fetcher.supports_full_list:
+            logger.error(
+                f"{fetcher.__class__.__name__} does not support auto-fetching the full ETF list. "
+                "Please specify 'codes' explicitly in sync_latest_etf_data()."
+            )
+            return
         # Case A: 用户未指定代码 -> 拉取全量列表
         try:
             logger.info("Fetching full ETF list from AkShare (no codes provided)...")
@@ -378,26 +409,9 @@ def sync_latest_etf_data(codes: List[str] = [],
 
             logger.info(f"Syncing {code} from {fetch_start.date()} to {end_date.date()}...")
 
-            context = {'symbol': code, 'period': 'daily', 'start_date': fetch_start.strftime('%Y%m%d'),
-                       'end_date': end_date.strftime('%Y%m%d'), 'adjust': 'hfq'}
+            df = fetcher.fetch_daily(code, name, fetch_start, end_date)
 
-            df = _execute_with_retry(ak.fund_etf_hist_em, context, retry_times=3)
-
-            if df is not None and not df.empty:
-                df.rename(
-                    columns={'日期': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW, '成交量': VOLUME,
-                             '成交额': AMOUNT, '涨跌幅': PRICE_CHG, '换手率': TURN}, inplace=True)
-                df[DATETIME] = pd.to_datetime(df[DATETIME])
-                df[CODE] = code
-                df[NAME] = name
-                df[VOLUME] *= 100
-                df[PE_TTM] = np.nan
-                df[PB_TTM] = np.nan
-                df[PRECLOSE] = np.nan
-                df = df[COLUMNS]
-                df = df.astype(COLUMNS_TYPE)
-
-                # --- 修复：直接保存当前这只 ETF，不要等到最后 ---
+            if not df.empty:
                 save_date(df, etf_root_dir, False)
             else:
                 logger.warning(f"No daily data fetched for {code}")
@@ -410,8 +424,10 @@ def sync_latest_etf_data(codes: List[str] = [],
 
     if not include_tick: return
 
-    # Tick 数据同理，可以做类似优化，但通常 Tick 数据量大，按天独立性强，此处暂时保留原逻辑或做轻量处理
-    # 为了保持一致性，这里也改为 loop 内保存
+    if not fetcher.supports_tick:
+        logger.info(f'Skipping ETF tick sync ({fetcher.__class__.__name__} does not support tick data)')
+        return
+
     logger.info(f'Start to synchronize etf tick data')
     for _, row in tqdm(target_df.iterrows(), total=target_df.shape[0]):
         code = row[CODE]
@@ -423,20 +439,8 @@ def sync_latest_etf_data(codes: List[str] = [],
             if target_tick_file.exists():
                 continue
 
-            context = {'symbol': name, 'period': '1'}
-            df = _execute_with_retry(ak.fund_etf_hist_min_em, context, 3)
-            if df is not None and not df.empty:
-                df.rename(
-                    columns={'日期时间': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW,
-                             '成交量': VOLUME,
-                             '成交额': AMOUNT}, inplace=True)
-                df[DATETIME] = pd.to_datetime(df[DATETIME])
-                df[CODE] = code
-                df[NAME] = name
-                df[VOLUME] *= 100
-                df = df[TICK_COLUMNS]
-
-                # --- 修复：直接保存 ---
+            df = fetcher.fetch_tick(code, name, beg_date)
+            if not df.empty:
                 save_date(df, etf_root_dir, True)
 
             time_module.sleep(TICK_INTERVAL)
