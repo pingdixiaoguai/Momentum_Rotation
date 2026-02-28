@@ -6,6 +6,7 @@ from datetime import datetime
 class AbstractETFFetcher(ABC):
     supports_tick: bool = False
     supports_full_list: bool = True  # 是否支持自动拉取全量 ETF 列表（codes=[] 路径）
+    needs_price_normalization: bool = False  # 是否需要归一化价格（BaoStock ETF 不支持复权）
 
     @abstractmethod
     def fetch_daily(self, code: str, name: str,

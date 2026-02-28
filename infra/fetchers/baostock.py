@@ -23,6 +23,7 @@ def _to_bs_code(code: str) -> str:
 class BaoStockFetcher(AbstractETFFetcher):
     supports_tick = False
     supports_full_list = False  # 不支持自动拉取全量列表，需用户指定 codes
+    needs_price_normalization = True  # BaoStock 对 ETF 不支持复权，需在 repo 层做价格归一化
 
     def __init__(self):
         import baostock as bs
@@ -47,7 +48,7 @@ class BaoStockFetcher(AbstractETFFetcher):
             start_date=start_date.strftime('%Y-%m-%d'),
             end_date=end_date.strftime('%Y-%m-%d'),
             frequency='d',
-            adjustflag='1',
+            adjustflag='3',  # 不复权：BaoStock 对 ETF 三种 adjustflag 均返回相同值（实际均不复权）
         )
         if rs.error_code != '0':
             logger.error(f"BaoStock query failed for {code}: {rs.error_msg}")
