@@ -5,6 +5,7 @@ from utils import logger, Klt, DataType
 from utils.const import *
 from cachetools import TTLCache, cached
 from . import ROOT_DATA_DIR, TICK_INTERVAL
+from .fetchers import get_fetcher
 import pyarrow as pa
 import pyarrow.parquet as pq
 from typing import Dict, List, Optional, Any, Callable
@@ -50,8 +51,31 @@ def _execute_with_retry(func: Callable, context: Dict, retry_times: int = 0, sil
         raise Exception(f'Failed to execute func={func},context={context}.')
 
 
+def _get_latest_trade_date_baostock() -> date:
+    """使用 BaoStock 获取最新交易日（DATA_FETCHER=baostock 时使用）"""
+    import baostock as bs
+    result = bs.login()
+    if result.error_code != '0':
+        raise RuntimeError(f"BaoStock login failed: {result.error_msg}")
+    try:
+        today = date.today()
+        start = (today - timedelta(days=10)).strftime('%Y-%m-%d')
+        end = today.strftime('%Y-%m-%d')
+        rs = bs.query_trade_dates(start_date=start, end_date=end)
+        trade_dates = []
+        while rs.error_code == '0' and rs.next():
+            row = rs.get_row_data()
+            if row[1] == '1':  # is_trading_day
+                trade_dates.append(row[0])
+        return date.fromisoformat(max(trade_dates)) if trade_dates else today
+    finally:
+        bs.logout()
+
+
 @cached(TTLCache(maxsize=2, ttl=60 * 60 * 3))
 def get_latest_trade_date() -> date:
+    if os.getenv("DATA_FETCHER", "akshare").lower() == "baostock":
+        return _get_latest_trade_date_baostock()
     context = {'symbol': '小金属', 'period': '60'}
     df = _execute_with_retry(ak.stock_board_industry_hist_min_em, context, 3)
     trade_time = datetime.strptime(df['日期时间'].max(), '%Y-%m-%d %H:%M')
@@ -274,6 +298,61 @@ def sync_latest_industry_data(codes: List[str] = [], include_tick: bool = True) 
     logger.info(f'Finish synchronizing industry indexes tick data')
 
 
+def _apply_baostock_price_normalization(df: pd.DataFrame, code: str, local_last_close: float) -> None:
+    """
+    将 BaoStock 不复权价格归一化到与本地已存储数据（AkShare 后复权）相同的尺度。
+
+    BaoStock 对 ETF 不支持复权，返回的是实际市价（不复权）。
+    而本地已存储的 AkShare 数据是后复权价格，两者差距约等于累计分红复权系数（约 10~20%）。
+    若直接拼接，动量因子在新旧数据边界会出现虚假的大幅涨跌，导致回测失真。
+
+    算法：
+      scale = 本地最新收盘价 / BaoStock 首行的 preclose（昨收 = 前一交易日实际市价）
+
+    原理：
+      - preclose 是 BaoStock 返回的前一交易日收盘价（不复权真实市价）
+      - local_last_close 是本地存储的前一交易日后复权收盘价
+      - 两者之比即为累计复权系数，将新数据整体等比缩放后价格连续
+      - 由于每次增量同步时 preclose 始终等于上次存储的 close/scale，
+        该 scale 值在历次同步中自动保持稳定，无需持久化
+
+    注意：
+      - 此操作直接修改传入的 df（in-place）
+      - 若 preclose 缺失，退而使用 price_chg 反推，若均无法获取则跳过归一化并警告
+    """
+    df_sorted = df.sort_values(DATETIME)
+    first_row = df_sorted.iloc[0]
+
+    # 优先使用 preclose 字段
+    preclose_val = first_row.get(PRECLOSE, None)
+    if pd.isna(preclose_val) or preclose_val == 0:
+        # 退而使用 pctChg（涨跌幅）反推昨收：preclose = close / (1 + pct_chg/100)
+        pct_chg = first_row.get(PRICE_CHG, None)
+        close_val = first_row.get(CLOSE, None)
+        if not (pd.isna(pct_chg) or pd.isna(close_val) or pct_chg == -100):
+            preclose_val = float(close_val) / (1 + float(pct_chg) / 100)
+
+    if pd.isna(preclose_val) or preclose_val == 0:
+        logger.warning(f"[NormPrice] {code}: preclose 无法获取，跳过价格归一化。"
+                       f"BaoStock 数据将以原始价格写入，可能导致价格跳变。")
+        return
+
+    scale = local_last_close / preclose_val
+
+    # 差距小于 0.1% 时无需调整（两数据源价格本就一致）
+    if abs(scale - 1.0) < 0.001:
+        return
+
+    logger.info(f"[NormPrice] {code}: 价格归一化 scale={scale:.4f} "
+                f"(本地最新后复权收盘={local_last_close:.4f}, "
+                f"BaoStock首行昨收={preclose_val:.4f})")
+
+    price_cols = [OPEN, HIGH, LOW, CLOSE, PRECLOSE]
+    for col in price_cols:
+        if col in df.columns:
+            df[col] = (df[col] * scale).round(4)
+
+
 def sync_latest_etf_data(codes: List[str] = [],
                          include_tick: bool = True,
                          beg_date: datetime = datetime.combine(get_latest_trade_date(), time()),
@@ -281,11 +360,18 @@ def sync_latest_etf_data(codes: List[str] = [],
                          ) -> None:
     codes = list(set(codes))
     etf_root_dir = get_data_dir(DataType.ETF)
+    fetcher = get_fetcher()
 
     # --- 优化：仅在未指定 codes 时拉取全量列表 ---
     target_df = pd.DataFrame()
 
     if len(codes) == 0:
+        if not fetcher.supports_full_list:
+            logger.error(
+                f"{fetcher.__class__.__name__} does not support auto-fetching the full ETF list. "
+                "Please specify 'codes' explicitly in sync_latest_etf_data()."
+            )
+            return
         # Case A: 用户未指定代码 -> 拉取全量列表
         try:
             logger.info("Fetching full ETF list from AkShare (no codes provided)...")
@@ -343,6 +429,7 @@ def sync_latest_etf_data(codes: List[str] = [],
 
             # 1. 检查本地已有数据的最新日期 (实现真正的增量更新)
             local_latest_date = None
+            local_last_close = None  # 用于 BaoStock 价格归一化
             try:
                 target_code_dir = etf_root_dir / code
                 if target_code_dir.exists():
@@ -353,13 +440,16 @@ def sync_latest_etf_data(codes: List[str] = [],
                         # 读取该年 daily parquet
                         daily_file = target_code_dir / max_year / f"{max_year}.parquet"
                         if daily_file.exists():
-                            # 快速读取 datetime 列的最大值
-                            table = pq.read_table(daily_file, columns=[DATETIME])
+                            # 同时读取 datetime 和 close，供增量检查和价格归一化使用
+                            table = pq.read_table(daily_file, columns=[DATETIME, CLOSE])
                             if table.num_rows > 0:
-                                max_ts = table.column(DATETIME).to_pandas().max()
-                                # 转换为 python datetime
+                                local_df = table.to_pandas()
+                                local_df[DATETIME] = pd.to_datetime(local_df[DATETIME])
+                                last_row = local_df.loc[local_df[DATETIME].idxmax()]
+                                max_ts = last_row[DATETIME]
                                 if pd.notna(max_ts):
                                     local_latest_date = max_ts.to_pydatetime()
+                                    local_last_close = float(last_row[CLOSE]) if pd.notna(last_row[CLOSE]) else None
             except Exception as check_err:
                 # 检查出错不影响下载，降级为全量
                 logger.warning(f"Failed to check local history for {code}: {check_err}")
@@ -378,26 +468,15 @@ def sync_latest_etf_data(codes: List[str] = [],
 
             logger.info(f"Syncing {code} from {fetch_start.date()} to {end_date.date()}...")
 
-            context = {'symbol': code, 'period': 'daily', 'start_date': fetch_start.strftime('%Y%m%d'),
-                       'end_date': end_date.strftime('%Y%m%d'), 'adjust': 'hfq'}
+            df = fetcher.fetch_daily(code, name, fetch_start, end_date)
 
-            df = _execute_with_retry(ak.fund_etf_hist_em, context, retry_times=3)
+            if not df.empty:
+                # 4. 价格归一化：BaoStock 返回不复权实际市价，需对齐到本地已存储的复权价格尺度
+                #    算法：scale = 本地最新后复权收盘 / BaoStock首行的昨收(preclose，即实际市价前日收盘)
+                #    由于 scale 因子等于"累计复权系数"，此后每次增量同步该值自动保持稳定
+                if fetcher.needs_price_normalization and local_last_close is not None:
+                    _apply_baostock_price_normalization(df, code, local_last_close)
 
-            if df is not None and not df.empty:
-                df.rename(
-                    columns={'日期': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW, '成交量': VOLUME,
-                             '成交额': AMOUNT, '涨跌幅': PRICE_CHG, '换手率': TURN}, inplace=True)
-                df[DATETIME] = pd.to_datetime(df[DATETIME])
-                df[CODE] = code
-                df[NAME] = name
-                df[VOLUME] *= 100
-                df[PE_TTM] = np.nan
-                df[PB_TTM] = np.nan
-                df[PRECLOSE] = np.nan
-                df = df[COLUMNS]
-                df = df.astype(COLUMNS_TYPE)
-
-                # --- 修复：直接保存当前这只 ETF，不要等到最后 ---
                 save_date(df, etf_root_dir, False)
             else:
                 logger.warning(f"No daily data fetched for {code}")
@@ -410,8 +489,10 @@ def sync_latest_etf_data(codes: List[str] = [],
 
     if not include_tick: return
 
-    # Tick 数据同理，可以做类似优化，但通常 Tick 数据量大，按天独立性强，此处暂时保留原逻辑或做轻量处理
-    # 为了保持一致性，这里也改为 loop 内保存
+    if not fetcher.supports_tick:
+        logger.info(f'Skipping ETF tick sync ({fetcher.__class__.__name__} does not support tick data)')
+        return
+
     logger.info(f'Start to synchronize etf tick data')
     for _, row in tqdm(target_df.iterrows(), total=target_df.shape[0]):
         code = row[CODE]
@@ -423,20 +504,8 @@ def sync_latest_etf_data(codes: List[str] = [],
             if target_tick_file.exists():
                 continue
 
-            context = {'symbol': name, 'period': '1'}
-            df = _execute_with_retry(ak.fund_etf_hist_min_em, context, 3)
-            if df is not None and not df.empty:
-                df.rename(
-                    columns={'日期时间': DATETIME, '开盘': OPEN, '收盘': CLOSE, '最高': HIGH, '最低': LOW,
-                             '成交量': VOLUME,
-                             '成交额': AMOUNT}, inplace=True)
-                df[DATETIME] = pd.to_datetime(df[DATETIME])
-                df[CODE] = code
-                df[NAME] = name
-                df[VOLUME] *= 100
-                df = df[TICK_COLUMNS]
-
-                # --- 修复：直接保存 ---
+            df = fetcher.fetch_tick(code, name, beg_date)
+            if not df.empty:
                 save_date(df, etf_root_dir, True)
 
             time_module.sleep(TICK_INTERVAL)

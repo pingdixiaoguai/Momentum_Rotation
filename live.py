@@ -4,8 +4,8 @@ import config
 from core.data import DataLoader
 from core.strategies import CustomStrategy
 # 导入因子
-from factors import Peak, Momentum_castle
-from logics import logic_factor_rotation
+from factors import Peak, Momentum_castle, Momentum, MainLineBias
+from logics import logic_factor_rotation, logic_bias_protection
 from notifier import send_to_dingtalk, send_at_all_nudge
 from utils import logger
 
@@ -16,8 +16,6 @@ def get_production_strategy():
     建议确保这里的配置与 run.py 中回测表现最好的参数一致。
     """
     strategy = CustomStrategy(
-            name="Momentum_Peak_Castle",
-            # 因子定义
             factors={
                 "Mom_20": Momentum_castle(25),
                 "Peak_20": Peak(20)
