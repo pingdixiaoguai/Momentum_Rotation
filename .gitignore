@@ -2,7 +2,7 @@
 .idea/**
 .vscode/**
 .venv
-.claude/**
+.claude
 .env
 *.html
 uv.lock
